@@ -1,0 +1,16 @@
+services:
+
+  order-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: order-manager
+    ports:
+      - "9090:9090"
+    environment:
+      # Point these to your externally running Camunda instance
+      CAMUNDA_CLIENT_GRPC-ADDRESS: http://host.docker.internal:26500
+      CAMUNDA_CLIENT_REST-ADDRESS: http://host.docker.internal:8080
+      CAMUNDA_CLIENT_MODE: self-managed
+      CAMUNDA_CLIENT_AUTH_METHOD: none
+    restart: on-failure

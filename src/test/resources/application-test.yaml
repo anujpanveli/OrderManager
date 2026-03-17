@@ -1,0 +1,11 @@
+camunda:
+  client:
+    enabled: false
+
+spring:
+  autoconfigure:
+    exclude:
+      - io.camunda.spring.client.CamundaAutoConfiguration
+
+server:
+  port: 9090
