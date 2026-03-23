@@ -8,9 +8,15 @@ services:
     ports:
       - "9090:9090"
     environment:
-      # Point these to your externally running Camunda instance
-      CAMUNDA_CLIENT_GRPC-ADDRESS: http://host.docker.internal:26500
-      CAMUNDA_CLIENT_REST-ADDRESS: http://host.docker.internal:8080
-      CAMUNDA_CLIENT_MODE: self-managed
-      CAMUNDA_CLIENT_AUTH_METHOD: none
+      # --- Updated for Camunda 8 SaaS ---
+      CAMUNDA_CLIENT_MODE: saas
+      CAMUNDA_CLIENT_AUTH_METHOD: oidc
+      
+      CAMUNDA_CLIENT_CLOUD_CLUSTER-ID: "<CLUSTER_ID>"
+      CAMUNDA_CLIENT_CLOUD_REGION: "<REGION>"
+      CAMUNDA_CLIENT_AUTH_CLIENT-ID: "<CLIENT_ID>"
+      CAMUNDA_CLIENT_AUTH_CLIENT-SECRET: "<CLIENT_SECRET>"
+      
+      # Optional: Explicitly point to the SaaS OIDC provider
+      CAMUNDA_CLIENT_AUTH_TOKEN-URL: "https://login.cloud.camunda.io/oauth/token"
     restart: on-failure
