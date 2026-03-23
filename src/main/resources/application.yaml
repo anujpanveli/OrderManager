@@ -1,10 +1,12 @@
 camunda:
   client:
-    mode: self-managed
+    mode: saas
     auth:
-      method: none
-    grpc-address: http://127.0.0.1:26500
-    rest-address: http://127.0.0.1:8080
+      client-id: 6ae2FsRMAXgt5nEvLDs-cfFb2Gce9ycR
+      client-secret: 3OY~msZ38i3tp0FAyRt.AQp.l7wTaMF3VJsK2h7LmvYpFGGmC7gu~iaZFWErvXzj
+    cloud:
+      cluster-id: e98bf2a9-fc95-469a-873a-fd23b4a11cd9
+      region: lhr-1
 
 server:
   port : 9090
