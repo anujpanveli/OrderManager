@@ -34,6 +34,7 @@ public class OrderWorker {
             
             client.newFailCommand(job.getKey())
                 .retries(job.getRetries() - 1)
+                .retryBackoff(Duration.ofMinutes(2))
                 .errorMessage("Local worker failure: " + e.getMessage())
                 .send();
         }
@@ -55,6 +56,7 @@ public class OrderWorker {
             
             client.newFailCommand(job.getKey())
                 .retries(job.getRetries() - 1)
+                .retryBackoff(Duration.ofMinutes(2))
                 .errorMessage("Local worker failure: " + e.getMessage())
                 .send();
         }
@@ -75,6 +77,7 @@ public class OrderWorker {
             
             client.newFailCommand(job.getKey())
                 .retries(job.getRetries() - 1)
+                .retryBackoff(Duration.ofMinutes(2))
                 .errorMessage("Local worker failure: " + e.getMessage())
                 .send();
         }
@@ -94,6 +97,7 @@ public class OrderWorker {
             
             client.newFailCommand(job.getKey())
                 .retries(job.getRetries() - 1)
+                .retryBackoff(Duration.ofMinutes(2))
                 .errorMessage("Local worker failure: " + e.getMessage())
                 .send();
         }
@@ -110,6 +114,7 @@ public class OrderWorker {
             
             client.newFailCommand(job.getKey())
                 .retries(job.getRetries() - 1)
+                .retryBackoff(Duration.ofMinutes(2))
                 .errorMessage("Local worker failure: " + e.getMessage())
                 .send();
         }
@@ -126,6 +131,7 @@ public class OrderWorker {
             
             client.newFailCommand(job.getKey())
                 .retries(job.getRetries() - 1)
+                .retryBackoff(Duration.ofMinutes(2))
                 .errorMessage("Local worker failure: " + e.getMessage())
                 .send();
         }
