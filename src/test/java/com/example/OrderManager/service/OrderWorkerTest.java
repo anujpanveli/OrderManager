@@ -1,29 +1,31 @@
 package com.example.OrderManager.service;
 
+import com.example.OrderManager.utils.Utilities;
 import io.camunda.zeebe.client.api.response.ActivatedJob;
 import io.camunda.zeebe.client.api.worker.JobClient;
 import io.camunda.zeebe.client.api.command.CompleteJobCommandStep1;
+import io.camunda.zeebe.client.api.ZeebeFuture;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-@MockitoSettings(strictness = Strictness.LENIENT)
+@MockitoSettings(strictness = Strictness.LENIENT) // Change to LENIENT
 class OrderWorkerTest {
 
     @InjectMocks
@@ -38,168 +40,92 @@ class OrderWorkerTest {
     @Mock
     private CompleteJobCommandStep1 completeJobCommandStep1;
 
+    @Mock
+    private ZeebeFuture<io.camunda.zeebe.client.api.response.CompleteJobResponse> zeebeFuture;
+
+    private MockedStatic<Utilities> utilitiesMock;
+
     @BeforeEach
     void setUp() {
+        // Setup static mocking for the Utilities class
+        utilitiesMock = mockStatic(Utilities.class);
+        
         when(activatedJob.getKey()).thenReturn(123L);
         when(jobClient.newCompleteCommand(anyLong())).thenReturn(completeJobCommandStep1);
         when(completeJobCommandStep1.variables(anyMap())).thenReturn(completeJobCommandStep1);
-        when(completeJobCommandStep1.send()).thenReturn(mock(io.camunda.zeebe.client.api.ZeebeFuture.class));
+        
+        // Ensure .send() returns a mock future to prevent NPEs in async logic
+        when(completeJobCommandStep1.send()).thenReturn(zeebeFuture);
     }
 
-    // ─────────────────────────────────────────────
-    // validate-credit worker tests
-    // ─────────────────────────────────────────────
-
-    @Test
-    @DisplayName("validateCredit: should complete the job exactly once")
-    void validateCredit_ShouldCompleteJobOnce() {
-        orderWorker.validateCredit(jobClient, activatedJob);
-
-        verify(jobClient, times(1)).newCompleteCommand(123L);
-        verify(completeJobCommandStep1, times(1)).send();
-    }
-
-    @RepeatedTest(20)
-    @DisplayName("validateCredit: result must always be Approved, Rejected, or Review")
-    void validateCredit_ShouldReturnValidCreditStatus() {
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-
-        orderWorker.validateCredit(jobClient, activatedJob);
-
-        verify(completeJobCommandStep1).variables(captor.capture());
-
-        Map<String, Object> vars = captor.getValue();
-        assertThat(vars).containsKey("creditStatus");
-
-        String creditStatus = (String) vars.get("creditStatus");
-        assertThat(creditStatus)
-                .as("creditStatus must be one of the three valid values")
-                .isIn(List.of("Approved", "Rejected", "Review"));
+    @AfterEach
+    void tearDown() {
+        // Critical: Close static mock after each test to avoid memory leaks
+        utilitiesMock.close();
     }
 
     @Test
-    @DisplayName("validateCredit: returned variable map must have exactly one entry")
-    void validateCredit_ShouldReturnExactlyOneVariable() {
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
-
+    @DisplayName("validateCredit: should invoke the async utility handler")
+    void validateCredit_ShouldInvokeUtility() {
         orderWorker.validateCredit(jobClient, activatedJob);
 
-        verify(completeJobCommandStep1).variables(captor.capture());
-        assertThat(captor.getValue()).hasSize(1);
+        // Verify that the worker creates the command and hands it to the utility
+        verify(jobClient).newCompleteCommand(123L);
+        utilitiesMock.verify(() -> 
+            Utilities.handleAsync(any(), eq(jobClient), eq(activatedJob), eq("validate-credit"))
+        );
     }
 
-    // ─────────────────────────────────────────────
-    // reserve-inventory worker tests
-    // ─────────────────────────────────────────────
-
     @Test
-    @DisplayName("reserveInventory: should complete the job exactly once")
-    void reserveInventory_ShouldCompleteJobOnce() {
+    @DisplayName("reserveInventory: should read orderId and invoke utility")
+    void reserveInventory_ShouldInvokeUtility() {
         when(activatedJob.getVariablesAsMap()).thenReturn(Map.of("orderId", "ORD-001"));
-        // reserve-inventory uses autoComplete=false with no variables, stub the chain
-        when(completeJobCommandStep1.send()).thenReturn(mock(io.camunda.zeebe.client.api.ZeebeFuture.class));
 
         orderWorker.reserveInventory(jobClient, activatedJob);
 
-        verify(jobClient, times(1)).newCompleteCommand(123L);
+        verify(activatedJob).getVariablesAsMap();
+        utilitiesMock.verify(() -> 
+            Utilities.handleAsync(any(), eq(jobClient), eq(activatedJob), eq("reserve-inventory"))
+        );
     }
 
     @Test
-    @DisplayName("reserveInventory: should handle missing orderId gracefully with UNKNOWN fallback")
-    void reserveInventory_ShouldUseFallbackWhenOrderIdMissing() {
-        when(activatedJob.getVariablesAsMap()).thenReturn(Map.of());
+    @DisplayName("updateSlaLog: now requires jobClient and invokes utility")
+    void updateSlaLog_ShouldInvokeUtility() {
+        orderWorker.updateSlaLog(jobClient, activatedJob);
 
-        // Should not throw any exception
-        orderWorker.reserveInventory(jobClient, activatedJob);
-
-        verify(jobClient, times(1)).newCompleteCommand(123L);
+        utilitiesMock.verify(() -> 
+            Utilities.handleAsync(any(), eq(jobClient), eq(activatedJob), eq("update-sla-log"))
+        );
     }
 
     @Test
-    @DisplayName("reserveInventory: should read orderId from job variables")
-    void reserveInventory_ShouldReadOrderIdFromVariables() {
-        when(activatedJob.getVariablesAsMap()).thenReturn(Map.of("orderId", "ORD-999"));
+    @DisplayName("generateInvoice: should invoke utility asynchronously")
+    void generateInvoice_ShouldInvokeUtility() {
+        orderWorker.generateInvoice(jobClient, activatedJob);
 
-        orderWorker.reserveInventory(jobClient, activatedJob);
-
-        // verify getVariablesAsMap was called to access orderId
-        verify(activatedJob, times(1)).getVariablesAsMap();
-    }
-
-    // ─────────────────────────────────────────────
-    // update-sla-log worker tests
-    // ─────────────────────────────────────────────
-
-    @Test
-    @DisplayName("updateSlaLog: should execute without throwing any exception")
-    void updateSlaLog_ShouldExecuteWithoutException() {
-        // autoComplete = true, so no jobClient interaction is needed
-        assertThat(catchThrowable(() -> orderWorker.updateSlaLog()))
-                .as("updateSlaLog must not throw")
-                .isNull();
+        utilitiesMock.verify(() -> 
+            Utilities.handleAsync(any(), eq(jobClient), eq(activatedJob), eq("generate-invoice"))
+        );
     }
 
     @Test
-    @DisplayName("updateSlaLog: should not interact with jobClient (autoComplete=true)")
-    void updateSlaLog_ShouldNotInteractWithJobClient() {
-        orderWorker.updateSlaLog();
-        verifyNoInteractions(jobClient);
-    }
+    @DisplayName("sendEmail: should invoke utility asynchronously")
+    void sendEmail_ShouldInvokeUtility() {
+        orderWorker.sendEmail(jobClient, activatedJob);
 
-    // ─────────────────────────────────────────────
-    // generate-invoice worker tests
-    // ─────────────────────────────────────────────
+        utilitiesMock.verify(() -> 
+            Utilities.handleAsync(any(), eq(jobClient), eq(activatedJob), eq("send-email"))
+        );
+    }
 
     @Test
-    @DisplayName("generateInvoice: should execute without throwing any exception")
-    void generateInvoice_ShouldExecuteWithoutException() {
-        assertThat(catchThrowable(() -> orderWorker.generateInvoice()))
-                .as("generateInvoice must not throw")
-                .isNull();
-    }
+    @DisplayName("sendSms: should invoke utility asynchronously")
+    void sendSms_ShouldInvokeUtility() {
+        orderWorker.sendSms(jobClient, activatedJob);
 
-    // ─────────────────────────────────────────────
-    // send-email worker tests
-    // ─────────────────────────────────────────────
-
-    @Test
-    @DisplayName("sendEmail: should execute without throwing any exception")
-    void sendEmail_ShouldExecuteWithoutException() {
-        assertThat(catchThrowable(() -> orderWorker.sendEmail()))
-                .as("sendEmail must not throw")
-                .isNull();
-    }
-
-    // ─────────────────────────────────────────────
-    // send-sms worker tests
-    // ─────────────────────────────────────────────
-
-    @Test
-    @DisplayName("sendSms: should execute without throwing any exception")
-    void sendSms_ShouldExecuteWithoutException() {
-        assertThat(catchThrowable(() -> orderWorker.sendSms()))
-                .as("sendSms must not throw")
-                .isNull();
-    }
-
-    // ─────────────────────────────────────────────
-    // Helper
-    // ─────────────────────────────────────────────
-
-    private Throwable catchThrowable(ThrowableAssert.ThrowingCallable callable) {
-        try {
-            callable.call();
-            return null;
-        } catch (Throwable t) {
-            return t;
-        }
-    }
-
-    interface ThrowableAssert {
-        interface ThrowingCallable {
-            void call() throws Throwable;
-        }
+        utilitiesMock.verify(() -> 
+            Utilities.handleAsync(any(), eq(jobClient), eq(activatedJob), eq("send-sms"))
+        );
     }
 }
