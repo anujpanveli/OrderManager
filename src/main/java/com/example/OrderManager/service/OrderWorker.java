@@ -7,6 +7,8 @@ import io.camunda.zeebe.client.api.response.ActivatedJob;
 import org.springframework.stereotype.Component;
 import java.util.Map;
 import java.util.Random;
+import java.time.Duration;
+import com.example.OrderManager.utils.Utilities;
 
 @Component
 public class OrderWorker {
@@ -23,17 +25,17 @@ public class OrderWorker {
             
             System.out.println("Worker: Validating Credit. Result: " + result);
 
-            client.newCompleteCommand(job.getKey())
-                .variables(Map.of("creditStatus", result))
-                .send()
-                .join();
+            var command = client.newCompleteCommand(job.getKey())
+                            .variables(Map.of("creditStatus", result));
+
+            Utilities.handleAsync(command, client, job, "validate-credit");
         } catch (Exception e) {
-            System.err.println("[validate-credit] Failed to process job " + job.getKey() + ": " + e.getMessage());
+            System.err.println("[validate-credit] Local processing error: " + e.getMessage());
+            
             client.newFailCommand(job.getKey())
                 .retries(job.getRetries() - 1)
-                .errorMessage("validate-credit failed: " + e.getMessage())
-                .send()
-                .join();
+                .errorMessage("Local worker failure: " + e.getMessage())
+                .send();
         }
     }
 
@@ -46,14 +48,15 @@ public class OrderWorker {
         try {
             String orderId = (String) job.getVariablesAsMap().getOrDefault("orderId", "UNKNOWN");
             System.out.println("[DB LOCK] Reserving inventory for Order ID: " + orderId);
-            client.newCompleteCommand(job.getKey()).send().join();
+            var command = client.newCompleteCommand(job.getKey());
+            Utilities.handleAsync(command, client, job, "reserve-inventory");
         } catch (Exception e) {
-            System.err.println("[reserve-inventory] Failed to process job " + job.getKey() + ": " + e.getMessage());
+            System.err.println("[reserve-inventory] Local processing error: " + e.getMessage());
+            
             client.newFailCommand(job.getKey())
                 .retries(job.getRetries() - 1)
-                .errorMessage("reserve-inventory failed: " + e.getMessage())
-                .send()
-                .join();
+                .errorMessage("Local worker failure: " + e.getMessage())
+                .send();
         }
     }
 
@@ -61,44 +64,70 @@ public class OrderWorker {
      * Part 2 - Requirement: update-sla-log
      * Demonstrates the non-interrupting event execution.
      */
-    @JobWorker(type = "update-sla-log")
-    public void updateSlaLog() {
+    @JobWorker(type = "update-sla-log", autoComplete = false)
+    public void updateSlaLog(final JobClient client, final ActivatedJob job) {
         try {
             System.out.println("Priority Updated!");
+            var command = client.newCompleteCommand(job.getKey());
+            Utilities.handleAsync(command, client, job, "update-sla-log");
         } catch (Exception e) {
-            // autoComplete = true, so Zeebe handles job completion automatically.
-            // Log the error — Zeebe will retry based on the job's retry config.
-            System.err.println("[update-sla-log] Unexpected error: " + e.getMessage());
+            System.err.println("[update-sla-log] Local processing error: " + e.getMessage());
+            
+            client.newFailCommand(job.getKey())
+                .retries(job.getRetries() - 1)
+                .errorMessage("Local worker failure: " + e.getMessage())
+                .send();
         }
     }
 
     /**
      * Logic for the remaining Service Tasks in BPMN
      */
-    @JobWorker(type = "generate-invoice")
-    public void generateInvoice() {
+    @JobWorker(type = "generate-invoice", autoComplete = false)
+    public void generateInvoice(final JobClient client, final ActivatedJob job) {
         try {
             System.out.println("Worker: Generating Invoice PDF...");
+            var command = client.newCompleteCommand(job.getKey());
+            Utilities.handleAsync(command, client, job, "generate-invoice");
         } catch (Exception e) {
-            System.err.println("[generate-invoice] Unexpected error: " + e.getMessage());
+            System.err.println("[generate-invoice] Local processing error: " + e.getMessage());
+            
+            client.newFailCommand(job.getKey())
+                .retries(job.getRetries() - 1)
+                .errorMessage("Local worker failure: " + e.getMessage())
+                .send();
         }
     }
 
-    @JobWorker(type = "send-email")
-    public void sendEmail() {
+    @JobWorker(type = "send-email", autoComplete = false)
+    public void sendEmail(final JobClient client, final ActivatedJob job) {
         try {
             System.out.println("Worker: Sending Email Notification...");
+            var command = client.newCompleteCommand(job.getKey());
+            Utilities.handleAsync(command, client, job, "send-email");
         } catch (Exception e) {
-            System.err.println("[send-email] Unexpected error: " + e.getMessage());
+            System.err.println("[send-email] Local processing error: " + e.getMessage());
+            
+            client.newFailCommand(job.getKey())
+                .retries(job.getRetries() - 1)
+                .errorMessage("Local worker failure: " + e.getMessage())
+                .send();
         }
     }
 
-    @JobWorker(type = "send-sms")
-    public void sendSms() {
+    @JobWorker(type = "send-sms", autoComplete = false)
+    public void sendSms(final JobClient client, final ActivatedJob job) {
         try {
             System.out.println("Worker: Sending SMS Notification...");
+            var command = client.newCompleteCommand(job.getKey());
+            Utilities.handleAsync(command, client, job, "send-sms");
         } catch (Exception e) {
-            System.err.println("[send-sms] Unexpected error: " + e.getMessage());
+            System.err.println("[send-sms] Local processing error: " + e.getMessage());
+            
+            client.newFailCommand(job.getKey())
+                .retries(job.getRetries() - 1)
+                .errorMessage("Local worker failure: " + e.getMessage())
+                .send();
         }
     }
 }
